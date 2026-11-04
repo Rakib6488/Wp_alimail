@@ -2,7 +2,7 @@ services:
   - type: web
     name: support-bridge
     runtime: node
-    buildCommand: rm -rf /opt/render/.cache/puppeteer && npm install && npx puppeteer browsers install chrome
+    buildCommand: rm -rf /opt/render/project/src/.puppeteer-cache && npm install && PUPPETEER_CACHE_DIR=/opt/render/project/src/.puppeteer-cache npx puppeteer install chrome
     startCommand: npm start
     envVars:
       - key: APPS_SCRIPT_URL
@@ -11,3 +11,5 @@ services:
         sync: false
       - key: PUBLIC_URL
         sync: false
+      - key: PUPPETEER_CACHE_DIR
+        value: /opt/render/project/src/.puppeteer-cache
