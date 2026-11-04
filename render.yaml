@@ -2,7 +2,7 @@ services:
   - type: web
     name: support-bridge
     runtime: node
-    buildCommand: rm -rf /opt/render/project/src/puppeteer-cache && npm install && export PUPPETEER_CACHE_DIR=/opt/render/project/src/puppeteer-cache && export PUPPETEER_SKIP_DOWNLOAD=false && npx @puppeteer/browsers install chrome --platform linux --cache-dir "$PUPPETEER_CACHE_DIR" && find "$PUPPETEER_CACHE_DIR" -type f -name chrome -print
+    buildCommand: rm -rf /opt/render/project/src/puppeteer-cache && npm install && export PUPPETEER_CACHE_DIR=/opt/render/project/src/puppeteer-cache && export PUPPETEER_SKIP_DOWNLOAD=false && node node_modules/@puppeteer/browsers/lib/cjs/main-cli.js install chrome --platform linux --cache-dir "$PUPPETEER_CACHE_DIR" && find "$PUPPETEER_CACHE_DIR" -type f -name chrome -print
     startCommand: npm start
     envVars:
       - key: APPS_SCRIPT_URL
