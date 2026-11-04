@@ -284,6 +284,25 @@ function patchWhatsAppWebJs() {
         log('Applied whatsapp-web.js incoming-media MIME workaround');
       }
     }
+
+    const clientFile = path.join(ROOT, 'node_modules', 'whatsapp-web.js', 'src', 'Client.js');
+    if (fs.existsSync(clientFile)) {
+      const clientSource = fs.readFileSync(clientFile, 'utf8');
+      const socketNeedle = "            let state = window.require('WAWebSocketModel').Socket.state;";
+      const socketPatch = `            let socketModel = window.require('WAWebSocketModel');
+            for (let i = 0; i < 150 && !socketModel?.Socket; i++) {
+                await new Promise(r => setTimeout(r, 200));
+                socketModel = window.require('WAWebSocketModel');
+            }
+            if (!socketModel?.Socket) throw new Error('WhatsApp Web socket model was not ready');
+            let state = socketModel.Socket.state;`;
+      if (clientSource.includes(socketNeedle)) {
+        fs.writeFileSync(clientFile, clientSource.replace(socketNeedle, socketPatch));
+        log('Applied WhatsApp Web socket readiness workaround');
+      } else if (!clientSource.includes('for (let i = 0; i < 150 && !socketModel?.Socket; i++)')) {
+        log('WARNING: WhatsApp Web socket readiness patch target was not found');
+      }
+    }
   } catch (e) {
     log('Could not apply whatsapp-web.js workaround:', e.message);
   }
@@ -371,7 +390,7 @@ async function initWhatsApp() {
   };
   wa.on('incoming_call', handleIncomingCall);
   wa.on('call', handleIncomingCall);
-  wa.initialize().catch(e => { if (me === wa) { waState = { status: 'error', qr: null, since: Date.now() }; log('WhatsApp init failed:', e.message); } });
+  wa.initialize().catch(e => { if (me === wa) { waState = { status: 'error', qr: null, since: Date.now() }; log('WhatsApp init failed:', e && e.stack || e); } });
 }
 
 function killProcessTree(pid) {
