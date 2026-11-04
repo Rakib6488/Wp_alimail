@@ -2,7 +2,7 @@ services:
   - type: web
     name: support-bridge
     runtime: node
-    buildCommand: npm install && npx puppeteer browsers install chrome
+    buildCommand: rm -rf /opt/render/.cache/puppeteer && npm install && npx puppeteer browsers install chrome
     startCommand: npm start
     envVars:
       - key: APPS_SCRIPT_URL
