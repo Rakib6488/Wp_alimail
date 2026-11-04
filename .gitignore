@@ -1,6 +1,7 @@
 node_modules/
 .wwebjs_cache/
 puppeteer-cache/
+.cache/
 wa_session/
 data/
 logs/
