@@ -13,3 +13,5 @@ services:
         sync: false
       - key: PUPPETEER_CACHE_DIR
         value: /opt/render/project/src/puppeteer-cache
+      - key: USE_BUNDLED_CHROMIUM
+        value: "1"

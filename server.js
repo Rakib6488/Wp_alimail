@@ -301,16 +301,25 @@ function requestRestart(reason) {
   setTimeout(() => restartWA(reason), 1000);
 }
 
-function initWhatsApp() {
+async function initWhatsApp() {
   if (NO_WA) return;
   patchWhatsAppWebJs();
   clearWAChromeLocks();
   const { Client, LocalAuth } = require('whatsapp-web.js');
+  const useBundledChromium = process.env.USE_BUNDLED_CHROMIUM === '1';
+  let executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || '';
+  let chromiumArgs = [];
+  if (useBundledChromium && !executablePath) {
+    const chromium = require('@sparticuz/chromium');
+    executablePath = await chromium.executablePath();
+    chromiumArgs = chromium.args || [];
+    log('Using bundled Chromium:', executablePath);
+  }
   waState = { status: 'starting', qr: null, since: Date.now() };
   wa = new Client({
     authStrategy: new LocalAuth({ dataPath: path.join(ROOT, 'wa_session') }),
     takeoverOnConflict: false,
-    puppeteer: { headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--no-first-run', '--disable-quic'] }
+    puppeteer: { executablePath: executablePath || undefined, headless: true, args: [...chromiumArgs, '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--no-first-run', '--disable-quic'] }
   });
   const me = wa;
   wa.on('qr', async qr => { if (me !== wa) return; waState = { status: 'qr', qr: await QRCode.toDataURL(qr, { margin: 1, width: 300 }), since: Date.now() }; log('WhatsApp: scan the QR code (open the QR page)'); });
@@ -399,7 +408,7 @@ async function restartWA(reason) {
   await killProcessTree(browserPid);
   await sleep(4000);
   restarting = false;
-  initWhatsApp();
+  initWhatsApp().catch(e => { waState = { status: 'error', qr: null, since: Date.now() }; log('WhatsApp setup failed:', e.message); });
 }
 setInterval(() => { refreshGroupNames().catch(() => {}); }, 5 * 60 * 1000);
 
