@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: support-bridge
+    runtime: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: APPS_SCRIPT_URL
+        sync: false
+      - key: API_KEY
+        sync: false
+      - key: PUBLIC_URL
+        sync: false

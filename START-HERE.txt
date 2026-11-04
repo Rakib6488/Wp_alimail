@@ -1,0 +1,4 @@
+1) Node.js 18+ install koro (nodejs.org)
+2) start.bat e double click koro, config.json e 2 ta value boshao
+3) install-autostart.bat e double click koro (PC on hole nijei chalu hobe)
+Bistarito: README.txt

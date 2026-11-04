@@ -1,0 +1,10 @@
+node_modules/
+.wwebjs_cache/
+wa_session/
+data/
+logs/
+config.json
+.env
+.env.*
+!.env.example
+
