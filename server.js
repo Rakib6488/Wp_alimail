@@ -7,9 +7,11 @@
  *  - Duplicate protection      : mail Message-ID checked here and again inside Apps Script
  *  - ngrok URL auto-sync       : BRIDGE_URL in Apps Script is updated by itself
  *  - Optional failover         : two PCs, only one active at a time (lease in Apps Script)
+ *  - SMTP port fallback        : tries SMTP_PORT first, then the other of 465/587 on connection failure
  *
  * Settings: config.json (see config.example.json) or environment variables.
- *   ENABLE_TEST=1  enables the /test diagnostic route (off by default, never in production)
+ *   ENABLE_TEST=1     enables the /test diagnostic route (off by default, never in production)
+ *   SMTP_FALLBACK=false  disables the 465 <-> 587 automatic switch
  */
 'use strict';
 const fs = require('fs');
@@ -309,20 +311,29 @@ function startLeaseController() {
 let mailCfg = null, transporter = null, imapGen = 0, imapClient = null, extraClient = null;
 const mailState = { configured: false, connected: false, connecting: false, lastError: '' };
 
+// SMTP port fallback: smtpPorts is the try-order, e.g. [587, 465]. On a connection-level failure the bridge switches to the next port.
+let smtpHost = '', smtpPorts = [], smtpPortIdx = 0;
+function buildTransport_(port) {
+  return nodemailer.createTransport({
+    host: smtpHost, port, secure: port === 465, pool: true, maxConnections: 3, maxMessages: 100,
+    auth: { user: mailCfg.SMTP_USER, pass: mailCfg.SMTP_PASS },
+    connectionTimeout: 20000, greetingTimeout: 15000, socketTimeout: 40000
+  });
+}
 async function loadMailConfig() {
   const r = await callScript({ action: 'config' });
   mailCfg = r.config;
   if (!mailCfg.SMTP_PASS || /APP_PASSWORD_HERE/.test(mailCfg.SMTP_PASS)) throw new Error('SMTP_PASS / IMAP_PASS are not set in Script Properties');
-  const host = process.env.SMTP_HOST || mailCfg.SMTP_HOST;
-  const port = Number(process.env.SMTP_PORT || mailCfg.SMTP_PORT || 587);
+  smtpHost = process.env.SMTP_HOST || mailCfg.SMTP_HOST;
+  const primary = Number(process.env.SMTP_PORT || mailCfg.SMTP_PORT || 465);
+  const fallbackOn = String(process.env.SMTP_FALLBACK !== undefined ? process.env.SMTP_FALLBACK : 'true').toLowerCase() !== 'false';
+  const alt = primary === 465 ? 587 : 465;
+  smtpPorts = fallbackOn ? [primary, alt] : [primary];
+  smtpPortIdx = 0;
   if (transporter) { try { transporter.close(); } catch (e) {} }
-  transporter = nodemailer.createTransport({
-    host, port, secure: port === 465, pool: true, maxConnections: 3, maxMessages: 100,
-    auth: { user: mailCfg.SMTP_USER, pass: mailCfg.SMTP_PASS },
-    connectionTimeout: 20000, greetingTimeout: 15000, socketTimeout: 40000
-  });
+  transporter = buildTransport_(smtpPorts[0]);
   mailState.configured = true;
-  log('Mail config loaded for', mailCfg.SMTP_USER, 'SMTP', host + ':' + port);
+  log('Mail config loaded for', mailCfg.SMTP_USER, 'SMTP', smtpHost, 'port order: ' + smtpPorts.join(' then '));
 }
 // Fixed footer images. The portal puts <img src="cid:..."> in the mail; the image is attached inline here.
 const FOOTER_IMAGES = [
@@ -334,8 +345,16 @@ function inlineImages_(html) {
     .filter(i => String(html || '').indexOf('cid:' + i.cid) >= 0 && fs.existsSync(path.join(__dirname, i.file)))
     .map(i => ({ filename: path.basename(i.file), path: path.join(__dirname, i.file), cid: i.cid }));
 }
-// Only retry when the connection failed BEFORE the mail was handed over (avoids duplicate mails).
-const SMTP_SAFE_RETRY = new Set(['ECONNECTION', 'ECONNREFUSED', 'ENOTFOUND', 'EDNS', 'EAI_AGAIN']);
+// Only retry when the mail was NOT handed over yet (avoids duplicate mails).
+// A connection error counts as safe only if it happened in the connect/handshake/login phase.
+const PRE_DATA_CMDS = new Set(['CONN', 'EHLO', 'HELO', 'STARTTLS', 'AUTH']);
+const CONN_ERRS = new Set(['ETIMEDOUT', 'ESOCKET', 'ECONNECTION', 'ECONNREFUSED', 'ECONNRESET']);
+const DNS_ERRS = new Set(['ENOTFOUND', 'EDNS', 'EAI_AGAIN']);
+function safeToRetry(e) {
+  if (!e) return false;
+  if (DNS_ERRS.has(e.code)) return true;
+  return CONN_ERRS.has(e.code) && !!e.command && PRE_DATA_CMDS.has(String(e.command).toUpperCase());
+}
 async function sendMail(m) {
   if (!transporter) await loadMailConfig();
   const files = (m.files || []).map(f => ({ filename: f.name, content: Buffer.from(f.data, 'base64'), contentType: f.mime }));
@@ -346,7 +365,17 @@ async function sendMail(m) {
       await transporter.sendMail(Object.assign({ from: mailCfg.SMTP_USER, to: m.to, subject: m.subject, text: m.text, html: m.html, cc: cc.length ? cc : undefined,
         attachments: inlineImages_(m.html).concat(files) }, ref ? { inReplyTo: ref, references: ref } : {}));
     } catch (e) {
-      if (!SMTP_SAFE_RETRY.has(e && e.code)) e.noRetry = true;
+      if (safeToRetry(e)) {
+        if (smtpPorts.length > 1 && CONN_ERRS.has(e.code)) {
+          const failed = smtpPorts[smtpPortIdx];
+          smtpPortIdx = (smtpPortIdx + 1) % smtpPorts.length;
+          try { transporter.close(); } catch (x) {}
+          transporter = buildTransport_(smtpPorts[smtpPortIdx]);
+          log('SMTP port ' + failed + ' failed (' + e.code + '), switching to ' + smtpPorts[smtpPortIdx]);
+        }
+      } else {
+        e.noRetry = true;
+      }
       throw e;
     }
   }, 3, 1500);
@@ -743,6 +772,7 @@ app.get('/status', guard, (req, res) => res.json({
   mailStatus: mailState.connected ? 'connected' : (mailState.connecting ? 'connecting' : 'disconnected'),
   mailConfigured: mailState.configured,
   mailError: mailState.lastError,
+  smtpPort: smtpPorts.length ? smtpPorts[smtpPortIdx] : null,
   queue: queue.length, delivered: stats.delivered, live: rtClients.size,
   uptimeMin: Math.round((Date.now() - stats.started) / 60000),
   failover: FAILOVER_ENABLED ? { enabled: true, pcId: PC_ID, active: bridgeLease.active, expiresAt: bridgeLease.expiresAt } : { enabled: false }
