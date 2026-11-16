@@ -313,15 +313,16 @@ async function loadMailConfig() {
   const r = await callScript({ action: 'config' });
   mailCfg = r.config;
   if (!mailCfg.SMTP_PASS || /APP_PASSWORD_HERE/.test(mailCfg.SMTP_PASS)) throw new Error('SMTP_PASS / IMAP_PASS are not set in Script Properties');
-  const port = Number(mailCfg.SMTP_PORT);
+  const host = process.env.SMTP_HOST || mailCfg.SMTP_HOST;
+  const port = Number(process.env.SMTP_PORT || mailCfg.SMTP_PORT);
   if (transporter) { try { transporter.close(); } catch (e) {} }
   transporter = nodemailer.createTransport({
-    host: mailCfg.SMTP_HOST, port, secure: port === 465, pool: true, maxConnections: 3, maxMessages: 100,
+    host, port, secure: port === 465, pool: true, maxConnections: 3, maxMessages: 100,
     auth: { user: mailCfg.SMTP_USER, pass: mailCfg.SMTP_PASS },
     connectionTimeout: 20000, greetingTimeout: 15000, socketTimeout: 40000
   });
   mailState.configured = true;
-  log('Mail config loaded for', mailCfg.SMTP_USER);
+  log('Mail config loaded for', mailCfg.SMTP_USER, 'SMTP', host + ':' + port);
 }
 // Fixed footer images. The portal puts <img src="cid:..."> in the mail; the image is attached inline here.
 const FOOTER_IMAGES = [
