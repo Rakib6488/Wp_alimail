@@ -2,7 +2,7 @@ services:
   - type: web
     name: support-bridge
     runtime: node
-    buildCommand: npm install && npx puppeteer browsers install chrome
+    buildCommand: npm install
     startCommand: npm start
     envVars:
       - key: APPS_SCRIPT_URL
@@ -11,3 +11,9 @@ services:
         sync: false
       - key: PUBLIC_URL
         sync: false
+      - key: NODE_ENV
+        value: production
+      - key: NO_MAIL
+        value: "0"
+      - key: PORT
+        value: 10000

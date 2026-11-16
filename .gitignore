@@ -1,12 +1,6 @@
+.env
 node_modules/
-.wwebjs_cache/
-puppeteer-cache/
-.cache/
-wa_session/
 data/
 logs/
-config.json
-.env
-.env.*
-!.env.example
-
+.cache/
+npm-debug.log*
