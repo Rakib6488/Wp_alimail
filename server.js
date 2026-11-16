@@ -314,7 +314,7 @@ async function loadMailConfig() {
   mailCfg = r.config;
   if (!mailCfg.SMTP_PASS || /APP_PASSWORD_HERE/.test(mailCfg.SMTP_PASS)) throw new Error('SMTP_PASS / IMAP_PASS are not set in Script Properties');
   const host = process.env.SMTP_HOST || mailCfg.SMTP_HOST;
-  const port = Number(process.env.SMTP_PORT || mailCfg.SMTP_PORT || 465);
+  const port = Number(process.env.SMTP_PORT || mailCfg.SMTP_PORT || 587);
   if (transporter) { try { transporter.close(); } catch (e) {} }
   transporter = nodemailer.createTransport({
     host, port, secure: port === 465, pool: true, maxConnections: 3, maxMessages: 100,
