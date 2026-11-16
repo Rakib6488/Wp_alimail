@@ -16,6 +16,6 @@ services:
       - key: NO_MAIL
         value: "0"
       - key: SMTP_PORT
-        value: "587"
+        value: "465"
       - key: PORT
         value: 10000
